@@ -8,6 +8,9 @@ from backend.utils.file_utils import log_warning
 from backend.core.config import SENTENCE_TRANSFORMER_MODEL
 from backend.utils.matching import fuzzy_match_keywords
 
+print("ATS_SCORER_VERSION: V2_FIXED")
+print("=== ATS_SCORER_V3 LOADED ===")
+
 ZIP_CODE_PATTERN = r'\b\d{5}(?:-\d{4})?\b'
 
 STREET_ADDRESS_PATTERN = (
@@ -44,13 +47,13 @@ def detect_location_info(text: str, nlp: spacy.Language) -> Dict:
     has_zip     = any(loc['type'] == 'zip'     for loc in locations)
 
     if has_address and has_zip:
-        privacy_risk, penalty = 'high', 5.0
+        privacy_risk, penalty = 'high', 3.0
     elif has_address or has_zip:
-        privacy_risk, penalty = 'high', 4.0
+        privacy_risk, penalty = 'high', 2.0
     elif len(locations) > 3:
-        privacy_risk, penalty = 'medium', 3.0
+        privacy_risk, penalty = 'medium', 1.0
     elif locations:
-        privacy_risk, penalty = 'low', 2.0
+        privacy_risk, penalty = 'low', 0.0   # city/state is normal — no penalty
     else:
         privacy_risk, penalty = 'none', 0.0
 
@@ -89,15 +92,63 @@ def _calculate_semantic_similarity(skill: str, text: str, embedder: SentenceTran
         log_warning(f"Similarity error for '{skill}': {e}", context='ats_scorer')
         return 0.0
 
-def _skill_matches(skill: str, text: str, embedder: SentenceTransformer, threshold: float) -> Tuple[bool, float]:
+# Aliases: canonical skill -> abbreviations/synonyms
+_SKILL_ALIASES: Dict[str, List[str]] = {
+    "machine learning": ["ml"],
+    "natural language processing": ["nlp"],
+    "artificial intelligence": ["ai"],
+    "deep learning": ["dl"],
+    "computer vision": ["cv"],
+    "javascript": ["js"],
+    "typescript": ["ts"],
+    "tensorflow": ["tf", "tensor flow"],
+    "postgresql": ["postgres", "psql"],
+    "mongodb": ["mongo"],
+    "kubernetes": ["k8s"],
+    "amazon web services": ["aws"],
+    "google cloud platform": ["gcp"],
+    "react.js": ["react", "reactjs"],
+    "node.js": ["node", "nodejs"],
+    "vue.js": ["vue", "vuejs"],
+    "data structures and algorithms": ["dsa", "data structures", "algorithms"],
+    "continuous integration": ["ci/cd", "ci"],
+    "version control": ["git", "github", "gitlab"],
+    "jupyter": ["jupyterlab", "jupyter notebook", "ipynb"],
+    "mysql": ["sql", "relational database"],
+    "git": ["version control", "github", "gitlab"],
+    "github": ["git", "version control"],
+    "scikit-learn": ["sklearn", "scikit learn"],
+    "pandas": ["dataframe", "data analysis"],
+    "numpy": ["numerical computing", "array"],
+}
 
-    #fast, o(n) directly check if skill is a substring of the text (case-insensitive)
-    if skill.lower() in text.lower():
+
+def _skill_matches(skill: str, text: str, embedder: SentenceTransformer, threshold: float) -> Tuple[bool, float]:
+    skill_lower = skill.lower()
+    text_lower  = text.lower()
+
+    # 1. Exact substring
+    if skill_lower in text_lower:
         return True, 1.0
-    
-    #slow, semantic similarity check using sentence embeddings
+
+    # 2. Alias match (skill -> its aliases)
+    for alias in _SKILL_ALIASES.get(skill_lower, []):
+        if alias in text_lower:
+            return True, 0.95
+
+    # 3. Reverse alias (alias -> canonical or sibling alias)
+    for canonical, alias_list in _SKILL_ALIASES.items():
+        if skill_lower in alias_list:
+            if canonical in text_lower:
+                return True, 0.95
+            for other in alias_list:
+                if other != skill_lower and other in text_lower:
+                    return True, 0.90
+
+    # 4. Semantic similarity (slowest)
     sim = _calculate_semantic_similarity(skill, text, embedder)
     return sim >= threshold, sim
+
 
 #Skill validation
 def validate_skills_with_projects(
@@ -105,7 +156,7 @@ def validate_skills_with_projects(
     projects: List[Dict],
     experience_entries: List[Dict],
     embedder: SentenceTransformer,
-    threshold: float = 0.6,
+    threshold: float = 0.35,
 ) -> Dict:
     
     if not skills:
@@ -123,6 +174,13 @@ def validate_skills_with_projects(
         if isinstance(e, dict)
     ).strip()
 
+    # Build full corpus for fallback matching
+    all_proj_texts = [
+        f"{p.get('title', '')} {p.get('description', '')} {' '.join(p.get('technologies', []))}"
+        for p in projects if isinstance(p, dict)
+    ]
+    combined_corpus = (experience_text + ' ' + ' '.join(all_proj_texts)).strip()
+
     validated_skills      = []
     unvalidated_skills    = []
     skill_project_mapping = {}
@@ -131,28 +189,41 @@ def validate_skills_with_projects(
         matching_projects = []
         max_similarity    = 0.0
 
+        # Check each project (including its technologies list)
         for project in projects:
-            project_text = f"{project.get('title', '')} {project.get('description', '')}"
+            proj_techs   = ' '.join(project.get('technologies', []))
+            project_text = f"{project.get('title', '')} {project.get('description', '')} {proj_techs}"
             matched, sim = _skill_matches(skill, project_text, embedder, threshold)
             max_similarity = max(max_similarity, sim)
-
             if matched:
                 matching_projects.append(project.get('title', 'Untitled Project'))
 
+        # Check experience
         if experience_text:
             matched, sim = _skill_matches(skill, experience_text, embedder, threshold)
             max_similarity = max(max_similarity, sim)
             if matched and 'Experience Section' not in matching_projects:
                 matching_projects.append('Experience Section')
 
+        # Corpus fallback: skill anywhere in resume body
+        if not matching_projects and combined_corpus:
+            matched, sim = _skill_matches(skill, combined_corpus, embedder, threshold)
+            if matched:
+                matching_projects.append('Resume Context')
+                max_similarity = max(max_similarity, sim)
+
         if matching_projects:
             validated_skills.append({'skill': skill, 'projects': matching_projects, 'similarity': max_similarity})
             skill_project_mapping[skill] = matching_projects
+            print(f"DEBUG SKILL MATCH: '{skill}' -> VALIDATED (similarity={max_similarity:.3f}, projects={matching_projects})") 
         else:
             unvalidated_skills.append(skill)
             skill_project_mapping[skill] = []
+            print(f"DEBUG SKILL MATCH: '{skill}' -> NOT VALIDATED (best_similarity={max_similarity:.3f}, threshold={threshold})")
 
-    validation_percentage = len(validated_skills) / len(skills)
+    raw_pct = len(validated_skills) / len(skills)
+    # 40% floor: having a skills section is inherently valid
+    validation_percentage = max(0.4, raw_pct) if skills else 0.0
     validation_score      = validation_percentage * 15.0
 
     return {
@@ -243,7 +314,7 @@ def _calc_content_score(
     score += _tier_score(achievement_count, [(10,5.0),(7,4.0),(5,3.0),(3,2.0),(1,1.0)])
 
     grammar_penalty = grammar_results.get('penalty_applied', 0.0)
-    score += max(0.0, 10.0 - grammar_penalty / 2.0)
+    score += max(6.0, 10.0 - grammar_penalty * 0.5)
 
     return min(25.0, max(0.0, score))
 
@@ -357,14 +428,14 @@ def calculate_overall_score(
         missing_pct      = len(fuzzy_result['missing']) / len(jd_keywords)
 
         if missing_pct > 0.7:
-            penalties['missing_jd_keywords'] = 15.0
-            score -= 15.0
-        elif missing_pct > 0.5:
-            penalties['missing_jd_keywords'] = 10.0
-            score -= 10.0
-        elif missing_pct > 0.3:
             penalties['missing_jd_keywords'] = 5.0
             score -= 5.0
+        elif missing_pct > 0.5:
+            penalties['missing_jd_keywords'] = 3.0
+            score -= 3.0
+        elif missing_pct > 0.3:
+            penalties['missing_jd_keywords'] = 1.0
+            score -= 1.0
 
     overall_score = min(100.0, max(0.0, score))
     interpretation = _generate_score_interpretation(overall_score)

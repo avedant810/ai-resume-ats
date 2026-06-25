@@ -1,5 +1,39 @@
+print("IMPORT io")
 import io
 import magic
+
+print("IMPORT typing")
+from typing import Tuple, Optional
+
+print("IMPORT pdfplumber")
+import pdfplumber
+
+print("IMPORT docx")
+from docx import Document
+
+print("IMPORT PyPDF2")
+import PyPDF2
+
+print("IMPORT file_utils")
+from backend.utils.file_utils import (
+    FileParsingError,
+    TextExtractionError,
+    FileUploadError,
+    log_error,
+    log_warning,
+    log_info,
+    with_fallback,
+)
+
+print("IMPORT config")
+from backend.core.config import (
+    MAX_FILE_SIZE_BYTES,
+    MAX_FILE_SIZE_MB,
+    SUPPORTED_MIME_TYPES,
+)
+
+print("ALL IMPORTS DONE")
+import io
 from typing import Tuple, Optional, Tuple
 
 import pdfplumber
@@ -128,7 +162,7 @@ def _extract_pdf_with_pypdf2(file_data: bytes) -> str:
 
 def extract_text_from_pdf(file_data: bytes) -> str:
     try: 
-        result, used_fallback=with_fallback(
+        result, used_fallback= with_fallback(
         _extract_pdf_with_pdfplumber, 
         _extract_pdf_with_pypdf2, 
         file_data, 

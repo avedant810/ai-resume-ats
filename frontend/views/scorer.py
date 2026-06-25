@@ -155,7 +155,7 @@ def _render_export_buttons(analysis: dict) -> None:
 def render() -> None:
     st.title("🎯 ATS Resume Scorer")
     st.markdown("Upload your resume — and optionally a job description — for a comprehensive analysis.")
-
+    
     with st.sidebar:
         st.markdown("---")
         st.markdown("## 📊 Analysis Options")
@@ -191,8 +191,18 @@ def render() -> None:
         return
 
     _, mid, _ = st.columns([1, 2, 1])
+
     with mid:
-        analyze = st.button("🚀 Analyze Resume", use_container_width=True, type="primary")
+        analyze = st.button(
+            "🚀 Analyze Resume",
+            use_container_width=True,
+            type="primary"
+    )
+
+    print("BUTTON VALUE =", analyze)
+
+    if analyze:
+            print("BUTTON CLICKED")
 
     if not analyze:
         # Re-show previous result on rerun (e.g. after PDF generation).
@@ -208,14 +218,21 @@ def render() -> None:
     job_description = _read_jd(jd_file, jd_text) if analysis_mode == "Job Description Comparison" else ""
 
     try:
+        print("STARTING ANALYSIS")
         with st.spinner("Analyzing your resume... this can take 10–30 seconds."):
             analysis = api_client.analyze_resume(
                 resume_file=resume_file,
                 access_token=access_token,
                 job_description=job_description,
             )
+            print("ANALYSIS COMPLETED")
     except requests.RequestException as exc:
+        print("REQUEST ERROR =", exc)
         _show_backend_error(exc)
+        return
+    except Exception as exc:
+        print("GENERAL ERROR =", exc)
+        st.error(str(exc))
         return
 
     st.session_state["scorer_analysis"] = analysis

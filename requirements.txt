@@ -11,34 +11,34 @@
 #     sudo apt install -y libcairo2 libpango-1.0-0 libpangoft2-1.0-0 libffi-dev  # Debian/Ubuntu
 
 # ── Backend: web framework ──
-fastapi>=0.110
-uvicorn[standard]>=0.27
-pydantic>=2.6
+fastapi>=0.110                #used for the backend API (REST endpoints)
+uvicorn[standard]>=0.27         #used for running the backend API server (ASGI server)
+pydantic>=2.6                  #used for data validation and serialization (required by FastAPI)
 python-multipart>=0.0.9      # required by FastAPI for File/Form uploads
-python-dotenv>=1.0
+python-dotenv>=1.0          #used for loading environment variables from a .env file (optional, but recommended)
 
 # ── Backend: NLP / ML ──
-spacy>=3.7,<4.0
-sentence-transformers>=2.5
-numpy>=1.26
-rapidfuzz>=3.6
+spacy>=3.7,<4.0 #used for NLP tasks (tokenization, lemmatization, etc.)
+sentence-transformers>=2.5 #used for semantic similarity scoring (BERT embeddings)
+numpy>=1.26 #used for numerical computations (required by sentence-transformers)
+rapidfuzz>=3.6 #used for fuzzy string matching (fuzzy keyword matching)
 
 # ── Backend: file parsing ──
-pdfplumber>=0.11
-PyPDF2>=3.0
-python-docx>=1.1
-python-magic>=0.4.27
+pdfplumber>=0.11 #used for PDF text extraction (preferred over PyPDF2)
+PyPDF2>=3.0 #used for PDF text extraction (fallback if pdfplumber fails)
+python-docx>=1.1 #used for DOCX text extraction
+python-magic>=0.4.27 #used for file type detection (required by pdfplumber and python-docx) 
 
 # ── Backend: PDF report generation ──
-jinja2>=3.1
-weasyprint>=60.0
+jinja2>=3.1 #used for HTML templating (used to generate the PDF report)
+weasyprint>=60.0 #used for converting HTML to PDF (used for generating the PDF report)
 
 # ── Backend: external services ──
-httpx>=0.27                  # async Supabase REST client
-groq>=0.13                   # Groq LLM client (0.13+ is required for httpx>=0.28 compatibility)
-PyJWT[crypto]>=2.8           # verifies Supabase access tokens (HS256)
+httpx>=0.27                  # async Supabase REST client #used for calling the Supabase REST API (for auth and database access)
+groq>=0.13      # (0.13+ is required for httpx>=0.28 compatibility) #used for calling the Groq LLM API (for AI scoring and feedback)
+PyJWT[crypto]>=2.8          #used for decoding JWT tokens (required by Supabase auth)
 
 # ── Frontend ──
-streamlit>=1.32
-requests>=2.31
+streamlit>=1.32 #used for the web UI (frontend) and local testing
+requests>=2.31 #used for the frontend to call the backend API
 supabase>=2.4                # frontend auth client (email/password + OAuth)

@@ -58,6 +58,7 @@ sudo dnf install -y cairo pango gdk-pixbuf2 libffi
 sudo apt install -y libcairo2 libpango-1.0-0 libpangoft2-1.0-0 libffi-dev
 ```
 
+
 ### 3. Configure environment variables
 
 Copy the template and fill in your keys:

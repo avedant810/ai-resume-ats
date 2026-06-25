@@ -29,19 +29,46 @@ def analyze_resume(
     access_token: str,
     job_description: str = "",
 ) -> Dict[str, Any]:
+
+    print("API_CLIENT CALLED")
+    print("BACKEND =", _backend_url())
+    print("TOKEN EXISTS =", bool(access_token))
+
     files = {
-        "resume": (resume_file.name, resume_file.getvalue(), resume_file.type),
+        "resume": (
+            resume_file.name,
+            resume_file.getvalue(),
+            resume_file.type,
+        ),
     }
+
     data = {"job_description": job_description}
-    response = requests.post(
-        f"{_backend_url()}/api/v1/analyze-resume",
-        files=files,
-        data=data,
-        headers=_auth_headers(access_token),
-        timeout=180,
-    )
-    response.raise_for_status()
-    return response.json()
+
+    try:
+        print("SENDING REQUEST TO BACKEND")
+
+        response = requests.post(
+            f"{_backend_url()}/api/v1/analyze-resume",
+            files=files,
+            data=data,
+            headers=_auth_headers(access_token),
+            timeout=180,
+            proxies={"http": None, "https": None},
+        )
+
+        print("STATUS =", response.status_code)
+        print("BODY =", response.text[:500])
+
+        response.raise_for_status()
+        return response.json()
+
+    except Exception as e:
+        print("========== REQUEST FAILED ==========")
+        print(type(e).__name__)
+        print(e)
+        raise
+
+   
 
 
 def get_history(access_token: str) -> List[Dict[str, Any]]:

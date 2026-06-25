@@ -27,16 +27,24 @@ async def analyze_resume(
     job_description: str = Form('', description='Job description text (optional)'),
     user_id: str = Depends(get_current_user),
 ):
+    print("\n===== ANALYZE API HIT =====")
+    print("USER =", user_id)
+
     warnings: List[str] = []
 
-
-    nlp      = request.app.state.nlp
+    nlp = request.app.state.nlp
     embedder = request.app.state.embedder
 
-
     try:
+        print("STEP 1 - Reading uploaded file")
+
         file_bytes = await resume.read()
-        filename   = resume.filename or 'resume'
+
+        filename = resume.filename or "resume"
+
+        print("STEP 2 - File read complete")
+        print("Filename:", filename)
+        print("Size:", len(file_bytes))
 
         from backend.services.resume_parser import (
             FileParsingError,
@@ -44,80 +52,112 @@ async def analyze_resume(
             parse_resume_file,
         )
 
-        resume_text, _metadata = parse_resume_file(file_bytes, filename)
-        logger.info(f"Parsed '{filename}': {len(resume_text)} chars extracted")
+        print("STEP 3 - Parsing resume")
 
-    except Exception as exc:
-        logger.error(f'File parsing failed: {exc}')
-        raise HTTPException(
-            status_code=422,
-            detail=f'Could not read or parse the resume: {exc}',
+        resume_text, _metadata = parse_resume_file(
+            file_bytes,
+            filename,
         )
 
-    #Full Analysis Pipeline 
+        print("STEP 4 - Resume parsed")
+        print("Characters extracted:", len(resume_text))
+
+    except Exception:
+        import traceback
+        print("\nERROR DURING RESUME PARSING")
+        traceback.print_exc()
+        raise
+
     try:
+        print("STEP 5 - Calling analyze_full_resume")
+
         from backend.services.resume_analyzer import analyze_full_resume
-        
+
         result = analyze_full_resume(
             resume_text=resume_text,
             nlp=nlp,
             embedder=embedder,
-            job_description=job_description
-        )
-    except Exception as exc:
-        logger.error(f'Full analysis pipeline failed: {exc}')
-        raise HTTPException(status_code=500, detail=f'Analysis pipeline failed: {exc}')
-
-    from backend.models.schemas import ComponentScores
-
-    #Extract jd_comparison details
-    jd_comparison_result = None
-    if result.get('jd_comparison'):
-        jd_comparison_result = JDComparison(
-            match_percentage=round(float(result['jd_comparison'].get('match_percentage', 0.0)), 1),
-            semantic_similarity=round(float(result['jd_comparison'].get('semantic_similarity', 0.0)), 3),
-            matched_keywords=result['jd_comparison'].get('matched_keywords', [])[:20],
-            missing_keywords=result['jd_comparison'].get('missing_keywords', [])[:15],
-            skills_gap=result['jd_comparison'].get('skills_gap', [])[:10],
+            job_description=job_description,
         )
 
-    # Convert detailed_feedback objects from prediction into what schema expects
-    detailed_fb = result.get('detailed_feedback', [])
-    
+        print("STEP 6 - analyze_full_resume finished")
 
-    svd_raw = result.get('skill_validation_details') or {}
-    skill_val_details = SkillValidationDetails(
-        validated       = svd_raw.get('validated', []),
-        unvalidated     = svd_raw.get('unvalidated', []),
-        total           = svd_raw.get('total', 0),
-        validated_count = svd_raw.get('validated_count', 0),
-        validation_pct  = svd_raw.get('validation_pct', 0.0),
-    )
-
-    response = AnalysisResponse(
-        ATS_score=result['ats_score'],
-        component_scores=ComponentScores(**result['component_scores']),
-        issues_summary=result['issues_summary'],
-        detailed_feedback=detailed_fb,
-        jd_match_analysis=jd_comparison_result,
-        skill_validation_details=skill_val_details,
-
-        # Retro-compatibility fields
-        ats_score=result['ats_score'],
-        keyword_match=jd_comparison_result.match_percentage if jd_comparison_result else 0.0,
-        missing_keywords=result.get('missing_keywords', []),
-        matched_keywords=result.get('matched_keywords', []),
-        skills=list(result.get('skills', [])[:20]),
-        jd_comparison=jd_comparison_result,
-        interpretation=result.get('interpretation', '')
-    )
-
+    except Exception:
+        import traceback
+        print("\nERROR INSIDE analyze_full_resume")
+        traceback.print_exc()
+        raise
 
     try:
+        print("STEP 7 - Building response")
+
+        jd_comparison_result = None
+
+        if result.get("jd_comparison"):
+            jd_comparison_result = JDComparison(
+                match_percentage=round(
+                    float(result["jd_comparison"].get("match_percentage", 0.0)), 1
+                ),
+                semantic_similarity=round(
+                    float(result["jd_comparison"].get("semantic_similarity", 0.0)), 3
+                ),
+                matched_keywords=result["jd_comparison"].get("matched_keywords", [])[:20],
+                missing_keywords=result["jd_comparison"].get("missing_keywords", [])[:15],
+                skills_gap=result["jd_comparison"].get("skills_gap", [])[:10],
+            )
+
+        detailed_fb = result.get("detailed_feedback", [])
+
+        svd_raw = result.get("skill_validation_details") or {}
+
+        skill_val_details = SkillValidationDetails(
+            validated=svd_raw.get("validated", []),
+            unvalidated=svd_raw.get("unvalidated", []),
+            total=svd_raw.get("total", 0),
+            validated_count=svd_raw.get("validated_count", 0),
+            validation_pct=svd_raw.get("validation_pct", 0.0),
+        )
+
+        response = AnalysisResponse(
+            ATS_score=result["ats_score"],
+            component_scores=ComponentScores(**result["component_scores"]),
+            issues_summary=result["issues_summary"],
+            detailed_feedback=detailed_fb,
+            jd_match_analysis=jd_comparison_result,
+            skill_validation_details=skill_val_details,
+
+            ats_score=result["ats_score"],
+            keyword_match=jd_comparison_result.match_percentage if jd_comparison_result else 0.0,
+            missing_keywords=result.get("missing_keywords", []),
+            matched_keywords=result.get("matched_keywords", []),
+            skills=list(result.get("skills", [])[:20]),
+            jd_comparison=jd_comparison_result,
+            interpretation=result.get("interpretation", ""),
+        )
+
+        print("STEP 8 - Response built")
+
+    except Exception:
+        import traceback
+        print("\nERROR BUILDING RESPONSE")
+        traceback.print_exc()
+        raise
+
+    try:
+        print("STEP 9 - Saving history")
+
         from backend.database.supabase_db import save_analysis
+
         await save_analysis(user_id, filename, result)
-    except Exception as exc:
-        logger.warning(f'History save failed (non-blocking): {exc}')
+
+        print("STEP 10 - History saved")
+
+    except Exception:
+        import traceback
+        print("\nERROR SAVING HISTORY")
+        traceback.print_exc()
+
+    print("STEP 11 - Returning response")
 
     return response
 

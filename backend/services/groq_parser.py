@@ -115,7 +115,7 @@ def parse_resume(raw_text: str)->Dict:
     raw_response=_call_groq(client, RESUME_SYSTEM_PROMPT, prompt)
     result=_try_parse_json(raw_response)
 
-    if result is None:
+    if result is not None:
         return _validate_resume_result(result)
     
 
