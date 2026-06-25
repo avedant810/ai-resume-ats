@@ -106,5 +106,5 @@ def get_current_user(
             detail='Token missing subject claim',
         )
     return user_id
-    print("TOKEN VERIFIED")
+    print("TOKEN VERIFIED") 
     print(user_id)
